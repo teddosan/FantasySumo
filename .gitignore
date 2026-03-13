@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# NiceGUI/Reflex leftovers
+.web/
+.nicegui/
+
+# Data (Optional: ignore if you want everyone to start with a fresh DB)
+sumo.db
+
+# OS files
+.DS_Store
+Thumbs.db
