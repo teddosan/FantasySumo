@@ -14,10 +14,11 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse
 
 import auth
+from config import DB_PATH, PORT, get_auth_config
 
 # --- DATABASE SETUP (Standard SQLite) ---
 def init_db():
-    conn = sqlite3.connect('sumo.db')
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
     c.execute('''CREATE TABLE IF NOT EXISTS wrestlers (
@@ -102,7 +103,7 @@ def index():
     global wrestler_grid
 
     logged_in_player = app.storage.user.get('player')
-    if not logged_in_player:   # belt-and-suspenders: middleware handles HTTP, this covers WebSocket
+    if not logged_in_player:   # middleware handles HTTP, this covers WebSocket
         ui.navigate.to('/login')
         return
 
@@ -139,7 +140,7 @@ async def seed_data():
         if response.status_code == 200:
             data = response.json()
             all_rikishi = data.get("east", []) + data.get("west", [])
-            conn = sqlite3.connect('sumo.db')
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             for r in all_rikishi:
                 cursor.execute(
@@ -154,12 +155,10 @@ async def seed_data():
         ui.notify(f'Error: {e}')
 
 
-# Draft a wrestler with the logged in user
+# Draft a wrestler with the currently logged in player
 def draft_wrestler(wrestler_name):
-    # The currently logged in user
     player = app.storage.user.get('player')
-
-    conn = sqlite3.connect('sumo.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT owner FROM wrestlers WHERE name = ?", (wrestler_name,))
     row = cursor.fetchone()
@@ -169,7 +168,7 @@ def draft_wrestler(wrestler_name):
     else:
         cursor.execute("UPDATE wrestlers SET owner = ? WHERE name = ?", (player, wrestler_name))
         conn.commit()
-        ui.notify(f'{player} drafted {wrestler_name}!', color='green')
+        ui.notify(f'you drafted {wrestler_name}!', color='green')
         refresh_list()
 
     conn.close()
@@ -183,7 +182,7 @@ def refresh_list():
 
     wrestler_grid.clear()
 
-    conn = sqlite3.connect('sumo.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT name, rank, owner FROM wrestlers")
     rows = cursor.fetchall()
@@ -199,9 +198,14 @@ def refresh_list():
                 else:
                     ui.button(
                         'Draft',
-                        on_click=lambda n=name: draft_wrestler(n, app.storage.user.get('player'))
+                        on_click=lambda n=name: draft_wrestler(n)
                     ).props('dense unelevated color=primary size=sm')
 
 # Run
-config = auth.load_config()
-ui.run(title='Fantasy Sumo League', storage_secret=config['secret_key'])
+config = get_auth_config()
+ui.run(
+    host='0.0.0.0',
+    port=PORT,
+    title='Fantasy Sumo League',
+    storage_secret=config['secret_key']
+)

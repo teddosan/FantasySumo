@@ -9,27 +9,22 @@ Sessions are random tokens stored server-side in sumo.db
 """
 
 import sys, json, os, sqlite3, secrets, time, getpass
-from pathlib import Path
 import bcrypt
+from config import get_auth_config, DB_PATH
 
-CONFIG_FILE     = Path('auth_config.json')
+
 SESSION_KEY     = 'sumo_session'   # key used in app.storage.user
 SESSION_DAYS    = 7
 MAX_FAILURES    = 5
 LOCKOUT_MINUTES = 15
 PLAYERS         = ['Ted', 'Kevin', 'Jamie', 'Mike']
 
-# Load the Config file
-def load_config() -> dict:
-    if not CONFIG_FILE.exists():
-        sys.exit("Run  python auth.py  first to set up passwords.")
-    with open(CONFIG_FILE) as f:
-        return json.load(f)
-
 
 # Interactive CLI wizard - run to create/update passwords
 def setup():
-    config = json.loads(CONFIG_FILE.read_text()) if CONFIG_FILE.exists() else {}
+    raw = os.environ.get('AUTH_CONFIG')
+    config = json.loads(raw) if raw else {}
+
     config.setdefault('secret_key', secrets.token_hex(32))
     config.setdefault('users', {})
 
@@ -54,10 +49,25 @@ def setup():
             print(f"  ✓ Set\n")
             break
 
-    CONFIG_FILE.write_text(json.dumps(config, indent=2))
-    os.chmod(CONFIG_FILE, 0o600)
+    # Writes Auth config into .env file
+    config_json = json.dumps(config)
 
-    print(f"Saved to {CONFIG_FILE}  (ensure it is in .gitignore!)\n")
+    env_path = '.env'
+    lines = []
+
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            lines = [l for l in f.readlines() if not l.startswith('AUTH_CONFIG=')]
+
+    lines.append(f"AUTH_CONFIG={config_json}\n")
+
+    with open(env_path, 'w') as f:
+        f.writelines(lines)
+
+    if sys.platform != 'win32':
+        os.chmod(env_path, 0o600)
+
+    print(f"AUTH_CONFIG has been set")
 
 
 # Create DB auth tables (called from main.py's init_db)
@@ -81,10 +91,10 @@ def init_auth_tables(cursor):
 
 # Login Returns (True, player_name) on success or (False, error_message) on failure
 def verify_login(player: str, password: str, ip: str) -> tuple[bool, str]:
-    config = load_config()
+    config = get_auth_config()
 
     # Check rate limit
-    conn = sqlite3.connect('sumo.db')
+    conn = sqlite3.connect(DB_PATH)
     row = conn.execute("SELECT fail_count, locked_until FROM login_attempts WHERE ip=?", (ip,)).fetchone()
 
     # Enforce rate limiting
@@ -133,7 +143,7 @@ def verify_login(player: str, password: str, ip: str) -> tuple[bool, str]:
 # Sessions
 def create_session(player: str) -> str:
     token = secrets.token_hex(32)
-    conn = sqlite3.connect('sumo.db')
+    conn = sqlite3.connect(DB_PATH)
 
     conn.execute("INSERT INTO sessions (token, player, last_seen) VALUES (?,?,?)", (token, player, time.time()))
 
@@ -148,7 +158,7 @@ def validate_session(token) -> str | None:
         return None
 
     cutoff = time.time() - SESSION_DAYS * 86400
-    conn = sqlite3.connect('sumo.db')
+    conn = sqlite3.connect(DB_PATH)
     row = conn.execute("SELECT player FROM sessions WHERE token=? AND last_seen>?", (token, cutoff)).fetchone()
 
     if row:
@@ -162,7 +172,7 @@ def validate_session(token) -> str | None:
 
 # Remove a session by deleting it's DB entry
 def revoke_session(token: str):
-    conn = sqlite3.connect('sumo.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM sessions WHERE token=?", (token,))
     conn.commit()
     conn.close()

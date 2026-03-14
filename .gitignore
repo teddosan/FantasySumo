@@ -16,5 +16,5 @@ sumo.db
 .DS_Store
 Thumbs.dbauth_config.json
 
-# Auth hashes
-auth_config.json
+# Local environment variables
+.env
