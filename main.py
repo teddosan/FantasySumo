@@ -154,21 +154,24 @@ async def seed_data():
         ui.notify(f'Error: {e}')
 
 
-def draft_wrestler(wrestler_name, player_name):
-    if not player_name:
-        ui.notify('Please select a drafter first!', type='warning')
-        return
+# Draft a wrestler with the logged in user
+def draft_wrestler(wrestler_name):
+    # The currently logged in user
+    player = app.storage.user.get('player')
+
     conn = sqlite3.connect('sumo.db')
     cursor = conn.cursor()
     cursor.execute("SELECT owner FROM wrestlers WHERE name = ?", (wrestler_name,))
     row = cursor.fetchone()
+
     if row and row[0]:
         ui.notify(f'{wrestler_name} is already taken by {row[0]}!', type='negative')
     else:
-        cursor.execute("UPDATE wrestlers SET owner = ? WHERE name = ?", (player_name, wrestler_name))
+        cursor.execute("UPDATE wrestlers SET owner = ? WHERE name = ?", (player, wrestler_name))
         conn.commit()
-        ui.notify(f'{player_name} drafted {wrestler_name}!', color='green')
+        ui.notify(f'{player} drafted {wrestler_name}!', color='green')
         refresh_list()
+
     conn.close()
 
 

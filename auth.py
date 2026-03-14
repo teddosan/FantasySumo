@@ -56,7 +56,8 @@ def setup():
 
     CONFIG_FILE.write_text(json.dumps(config, indent=2))
     os.chmod(CONFIG_FILE, 0o600)
-    print(f"Saved to {CONFIG_FILE}  (add it to .gitignore!)\n")
+
+    print(f"Saved to {CONFIG_FILE}  (ensure it is in .gitignore!)\n")
 
 
 # Create DB auth tables (called from main.py's init_db)
