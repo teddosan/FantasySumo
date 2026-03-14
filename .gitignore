@@ -14,4 +14,7 @@ sumo.db
 
 # OS files
 .DS_Store
-Thumbs.db
+Thumbs.dbauth_config.json
+
+# Auth hashes
+auth_config.json
