@@ -1,188 +1,90 @@
-# Fantasy Sumo League
----
-
-## Files
-- main.py           the app
-- auth.py           login, sessions, rate limiting
-- config.py         reads environment variables
-- requirements.txt  python dependencies
-- Procfile          tells hosting services how to start the app
-- .env              your local secrets (never commit this)
-- .env.example      shows what variables are expected (safe to commit)
-- .gitignore        keeps secrets out of git
----
-
 ## Local Setup
-**Install dependencies**
+
+### 1. Install dependencies:
+```bash
+pip install nicegui bcrypt requests python-dotenv
+```
+or
+```bash
 pip install -r requirements.txt
-
-**Set passwords**
-Run `python auth.py` once. It asks for each player's password interactively,
-hashes them with bcrypt, and writes everything to `.env`.
-
-**Run the app**
-python main.py
-
-Visit `http://localhost:8080`.
-
-To reset or change a password, just run `python auth.py` again.
-
----
-
-## Hosting
-**1. SSH in**
-
-```bash
-ssh root@your-server-ip
 ```
 
-**2. Install Python**
-
-```bash
-apt update && apt install python3 python3-pip -y
-pip3 install nicegui bcrypt requests python-dotenv
-```
-
-**3. Copy your files up** (run locally)
-
-```bash
-scp main.py auth.py config.py requirements.txt root@your-server-ip:/app/
-```
-
-**4. Set up passwords**
-
-```bash
-cd /app
-python3 auth.py
-```
-
-This writes `.env` on the server with your hashed passwords.
-
-**5. Test it**
-
-```bash
-python3 main.py
-```
-
-Visit `http://your-server-ip:8080` to confirm it works, then Ctrl+C.
-
-**6. Install Caddy for HTTPS**
-
-Caddy handles SSL certificates automatically via Let's Encrypt.
-
-```bash
-apt install caddy -y
-```
-
-Edit `/etc/caddy/Caddyfile`:
-
-```
-sumo.yourdomain.com {
-    reverse_proxy localhost:8080
-}
-```
-
-```bash
-systemctl restart caddy
-```
-
-Your app is now live at `https://sumo.yourdomain.com`.
-
-**7. Keep it running with systemd**
-
-Create `/etc/systemd/system/sumo.service`:
-
-```ini
-[Unit]
-Description=Fantasy Sumo League
-After=network.target
-
-[Service]
-WorkingDirectory=/app
-ExecStart=python3 main.py
-Restart=always
-User=root
-EnvironmentFile=/app/.env
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-systemctl daemon-reload
-systemctl enable sumo
-systemctl start sumo
-```
-
-The app now starts on boot and restarts automatically if it crashes.
-
-**Useful commands**
-
-```bash
-systemctl status sumo        # is it running?
-journalctl -u sumo -f        # live logs
-systemctl restart sumo       # restart after a code update
-```
-
-**Deploying an update**
-
-```bash
-scp main.py auth.py config.py root@your-server-ip:/app/
-ssh root@your-server-ip systemctl restart sumo
-```
-
----
-
-## Hosting on Railway
-
-Railway is the easiest option if you want zero server management.
-
-**1. Install the Railway CLI**
-
-```bash
-npm install -g @railway/cli
-railway login
-```
-
-**2. Set up passwords locally first**
-
+### 2. Add users. This creates `.env` and generates `SECRET_KEY` automatically:
 ```bash
 python auth.py
 ```
 
-This writes your `AUTH_CONFIG` value to `.env`. Copy the printed line
-that starts with `AUTH_CONFIG=`.
+### 3. Run the app:
+```bash
+python main.py
+```
+---
 
-**3. Deploy**
+## Deploying to Railway
 
+### Prerequisites
+- A [Railway](https://railway.app) account
+- The Railway CLI installed: `npm install -g @railway/cli`
+- Your code in a git repository
+
+### 1. Login
+```bash
+railway login
+```
+
+### 2. Create a new project
 ```bash
 railway init
-railway up
 ```
 
-**4. Add environment variables**
+### 3. Add a volume for the database
+In the Railway dashboard:
+- Go to your service
+- Click **Volumes**
+- Add a volume mounted at `/data`
 
-In the Railway dashboard, go to your service, then Variables, and add:
-
+### 4. Set environment variables
+Generate the secret key with
 ```
-AUTH_CONFIG=<paste the value from step 2>
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+then,
+
+In the Railway dashboard, go to **Variables** and add:
+```
+SECRET_KEY=<generated with: python -c "import secrets; print(secrets.token_hex(32))">
 DB_PATH=/data/sumo.db
 ```
 
-Railway injects `PORT` automatically so you do not need to set it.
+Railway sets `PORT` automatically, do not add it yourself.
 
-**5. Add a volume for the database**
+### 5. Add users
+```bash
+railway run python auth.py
+```
 
-In the Railway dashboard, go to Volumes and add a volume mounted at `/data`.
-This keeps your draft data across deploys.
+### 6. Deploy
+```bash
+railway up
+```
+
+Railway will detect `requirements.txt` and `Procfile` automatically.
 
 ---
 
-## Notes
+## Common Tasks
 
-- Passwords are bcrypt-hashed (work factor 12). Plaintext passwords are
-  never stored anywhere.
-- Sessions are random 256-bit tokens stored server-side in SQLite.
-  The browser only ever sees the token.
-- Five failed login attempts from the same IP triggers a 15-minute lockout.
-- `.env` and `sumo.db` are in `.gitignore`. Do not commit them.
+Redeploy after a code change:
+```bash
+railway up
+```
+
+View logs:
+```bash
+railway logs
+```
+
+Update a user password:
+```bash
+railway run python auth.py
+```
