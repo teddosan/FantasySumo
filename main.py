@@ -14,7 +14,8 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse
 
 import auth
-from config import DB_PATH, PORT, get_auth_config
+from config import DB_PATH, PORT, get_secret_key
+
 
 # --- DATABASE SETUP (Standard SQLite) ---
 def init_db():
@@ -202,10 +203,9 @@ def refresh_list():
                     ).props('dense unelevated color=primary size=sm')
 
 # Run
-config = get_auth_config()
 ui.run(
     host='0.0.0.0',
     port=PORT,
     title='Fantasy Sumo League',
-    storage_secret=config['secret_key']
+    storage_secret=get_secret_key()
 )

@@ -16,5 +16,6 @@ sumo.db
 .DS_Store
 Thumbs.dbauth_config.json
 
-# Local environment variables
+# Local files
 .env
+logs/
