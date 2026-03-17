@@ -14,6 +14,7 @@ sumo.db
 
 # OS files
 .DS_Store
+Thumbs.db
 Thumbs.dbauth_config.json
 
 # Local files
