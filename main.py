@@ -84,27 +84,40 @@ def index():
     # 4. Fill the grid with data
     refresh_list()
 
-def draft_wrestler(wrestler_name, player_name):
+def draft_wrestler(wrestler_name):
+    # Get the player selected in the dropdown
+    player_name = current_picker.value
+    
     if not player_name:
-        ui.notify('Please select a drafter first!', type='warning')
+        ui.notify('Select a drafter first!', type='warning')
         return
 
     conn = sqlite3.connect('sumo.db')
     cursor = conn.cursor()
     
-    # Check if already drafted
+    # Check if someone else already drafted them
     cursor.execute("SELECT owner FROM wrestlers WHERE name = ?", (wrestler_name,))
-    row = cursor.fetchone()
+    result = cursor.fetchone()
     
-    if row and row[0]:
-        ui.notify(f'{wrestler_name} is already taken by {row[0]}!', type='negative')
+    if result and result[0]:
+        ui.notify(f'{wrestler_name} is already owned by {result[0]}!', type='negative')
     else:
+        # Assign the wrestler to the player
         cursor.execute("UPDATE wrestlers SET owner = ? WHERE name = ?", (player_name, wrestler_name))
         conn.commit()
         ui.notify(f'{player_name} drafted {wrestler_name}!', color='green')
-        refresh_list() # Redraw the UI to show the new owner
+        # Refresh the UI to reflect the change
+        refresh_list()
     
     conn.close()
+
+def release_wrestler(wrestler_name):
+    conn = sqlite3.connect('sumo.db')
+    cursor = conn.cursor()
+    cursor.execute("UPDATE wrestlers SET owner = NULL WHERE name = ?", (wrestler_name,))
+    conn.commit()
+    conn.close()
+    refresh_list()
 
 def refresh_list():
     global wrestler_grid
@@ -124,10 +137,24 @@ def refresh_list():
 
     with wrestler_grid:
         for name, rank, owner in rows:
+            # Highlight owned cards in gray, available in white
+            card_classes = 'w-64 bg-gray-100' if owner else 'w-64 bg-white shadow-lg'
             # ... your card building code ...
-            with ui.card():
-                ui.label(name)
-                # etc.
+            with ui.card().classes(card_classes):
+                with ui.card_section():
+                    ui.label(name).classes('text-h6')
+                    ui.label(rank).classes('text-subtitle2 text-grey')
+                    
+                    if owner:
+                        ui.label(f'DRAFTED BY: {owner}').classes('text-orange text-bold q-mt-sm')
+                
+                with ui.card_actions():
+                    if not owner:
+                        # The button passes the specific wrestler name to our function
+                        ui.button('Draft', on_click=lambda n=name: draft_wrestler(n)).props('flat color=primary')
+                    else:
+                        # Optional: Add a 'Release' button for the commissioner (you)
+                        ui.button('Release', on_click=lambda n=name: release_wrestler(n)).props('flat color=red')
 
 ui.run(title='Sumo Fantasy')
 
