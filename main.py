@@ -35,7 +35,27 @@ def init_db():
     conn.commit()
     conn.close()
 
-init_db()
+def init_results_db():
+    conn = sqlite3.connect('sumo.db')
+    cursor = conn.cursor()
+    # Stores each match result: Day, Wrestler, Opponent, and Result (win/loss)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS daily_results 
+                      (id INTEGER PRIMARY KEY, 
+                       basho_id TEXT,
+                       day INTEGER,
+                       rikishi_name TEXT,
+                       opponent_name TEXT,
+                       result TEXT,
+                       kimarite TEXT)''')
+    conn.commit()
+    conn.close()
+
+@app.on_startup
+def startup():
+    # Call all your table creation functions here
+    init_db()         # For wrestlers
+    init_results_db() # For the new daily_results table
+    print("Database tables verified and ready.")
 
 
 # Auth middleware — redirects unauthenticated requests to /login
@@ -96,6 +116,44 @@ async def login_page(request: Request):
         name_input.on('keydown.enter', do_login)
         ui.button('Sign In', on_click=do_login).classes('w-full').props('unelevated color=primary')
 
+async def update_daily_results(day_number):
+    url = f"https://www.sumo-api.com/api/basho/202603/banzuke/Makuuchi"
+    
+    try:
+        response = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: requests.get(url, timeout=5)
+        )
+        if response.status_code == 200:
+            data = response.json()
+            all_rikishi = data.get("east", []) + data.get("west", [])
+            
+            conn = sqlite3.connect('sumo.db')
+            cursor = conn.cursor()
+            
+            for r in all_rikishi:
+                name = r.get("shikonaEn")
+                # Look at the specific day in their record list
+                # Day 1 is index 0, Day 2 is index 1, etc.
+                record = r.get("record", [])
+                if len(record) >= day_number:
+                    match = record[day_number - 1]
+                    res = match.get("result") # "win" or "loss"
+                    opp = match.get("opponentShikonaEn")
+                    kim = match.get("kimarite")
+
+                    if res: # Only save if the match has actually happened
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO daily_results 
+                            (basho_id, day, rikishi_name, opponent_name, result, kimarite)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, ("202603", day_number, name, opp, res, kim))
+            
+            conn.commit()
+            conn.close()
+            ui.notify(f'Day {day_number} results updated!', type='positive')
+    except Exception as e:
+        ui.notify(f'Update failed: {e}')
+
 # Main app
 wrestler_grid  = None
 
@@ -130,6 +188,36 @@ def index():
     ui.separator()
     wrestler_grid = ui.grid(columns=4).classes('w-full q-pa-md')
     refresh_list()
+
+@ui.page('/results')
+def results_page():
+    # Header
+    with ui.row().classes('w-full items-center justify-between q-pa-md'):
+        ui.label('March 2026 Live Results').classes('text-h4')
+        ui.button('Update Today', on_click=lambda: update_daily_results(4)).props('icon=sync')
+
+    # Results Table
+    columns = [
+        {'name': 'rikishi', 'label': 'Rikishi', 'field': 'rikishi_name', 'sortable': True},
+        {'name': 'result', 'label': 'Result', 'field': 'result'},
+        {'name': 'opponent', 'label': 'Opponent', 'field': 'opponent_name'},
+        {'name': 'method', 'label': 'Kimarite', 'field': 'kimarite'},
+    ]
+
+    conn = sqlite3.connect('sumo.db')
+    cursor = conn.cursor()
+    # Join with wrestlers table to see who OWNS the winner!
+    cursor.execute("""
+        SELECT r.rikishi_name, r.result, r.opponent_name, r.kimarite, w.owner
+        FROM daily_results r
+        LEFT JOIN wrestlers w ON r.rikishi_name = w.name
+        WHERE r.day = 4
+    """)
+    rows = [dict(zip(['rikishi_name', 'result', 'opponent_name', 'kimarite', 'owner'], row)) for row in cursor.fetchall()]
+    conn.close()
+
+    # Display the table
+    ui.table(columns=columns, rows=rows, row_key='rikishi_name').classes('w-full')
 
 
 async def seed_data():
@@ -207,5 +295,5 @@ ui.run(
     host='0.0.0.0',
     port=PORT,
     title='Fantasy Sumo League',
-    storage_secret=get_secret_key()
+    storage_secret=get_secret_key(),
 )
