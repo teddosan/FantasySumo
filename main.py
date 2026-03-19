@@ -141,7 +141,7 @@ async def update_all_available_days():
             data = response.json()
             all_rikishi = data.get("east", []) + data.get("west", [])
             
-            conn = sqlite3.connect('sumo.db')
+            conn = sqlite3.connect('DB_PATH')
             cursor = conn.cursor()
             
             for r in all_rikishi:
@@ -173,6 +173,7 @@ wrestler_grid  = None
 
 @ui.page('/')
 def index():
+    menu()
     global wrestler_grid
 
     logged_in_player = app.storage.user.get('player')
@@ -212,7 +213,7 @@ def results_page():
         # Button to sync the latest data (Day 5/6)
         ui.button('Sync Latest', on_click=lambda: update_all_available_days()).props('icon=sync')
 
-    conn = sqlite3.connect('sumo.db')
+    conn = sqlite3.connect('DB_PATH')
     cursor = conn.cursor()
     
     # 1. Find the highest day we have data for
