@@ -17,6 +17,8 @@ import auth
 from config import DB_PATH, PORT, get_secret_key
 
 
+API_URL = 'https://www.sumo-api.com/api/basho/202603/banzuke/Makuuchi'
+
 # --- DATABASE SETUP (Standard SQLite) ---
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -126,22 +128,20 @@ async def login_page(request: Request):
         ui.button('Sign In', on_click=do_login).classes('w-full').props('unelevated color=primary')
 
 async def update_all_available_days():
-    # Since it's March 19 in Dublin, it's already March 20 (Day 6) in Osaka.
-    # We loop through all potential days of the tournament.
     for d in range(1, 16):
         await update_daily_results(d)
     ui.notify("Tournament history updated!", color='green')
-    ui.navigate.to('/results') # Refresh page to show new data
+    # ui.navigate.to('/results') # Refresh page to show new data
 
     try:
         response = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: requests.get(url, timeout=5)
+            None, lambda: requests.get(API_URL, timeout=5)
         )
         if response.status_code == 200:
             data = response.json()
             all_rikishi = data.get("east", []) + data.get("west", [])
             
-            conn = sqlite3.connect('DB_PATH')
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             
             for r in all_rikishi:
@@ -213,7 +213,7 @@ def results_page():
         # Button to sync the latest data (Day 5/6)
         ui.button('Sync Latest', on_click=lambda: update_all_available_days()).props('icon=sync')
 
-    conn = sqlite3.connect('DB_PATH')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     # 1. Find the highest day we have data for
@@ -254,10 +254,9 @@ def results_page():
 
 
 async def seed_data():
-    url = "https://www.sumo-api.com/api/basho/202603/banzuke/Makuuchi"
     try:
         response = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: http.get(url, timeout=5)
+            None, lambda: requests.get(API_URL, timeout=5)
         )
         if response.status_code == 200:
             data = response.json()

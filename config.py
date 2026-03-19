@@ -25,3 +25,4 @@ def get_secret_key() -> str:
 
 DB_PATH = os.environ.get('DB_PATH', './sumo.db')
 PORT    = int(os.environ.get('PORT', 8080))
+
