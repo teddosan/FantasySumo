@@ -8,7 +8,7 @@ Setup:
 """
 
 import asyncio, sqlite3
-import requests as http
+import requests
 from nicegui import ui, app
 from fastapi import Request
 from fastapi.responses import RedirectResponse
@@ -36,7 +36,7 @@ def init_db():
     conn.close()
 
 def init_results_db():
-    conn = sqlite3.connect('sumo.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     # Stores each match result: Day, Wrestler, Opponent, and Result (win/loss)
     cursor.execute('''CREATE TABLE IF NOT EXISTS daily_results 
@@ -49,6 +49,15 @@ def init_results_db():
                        kimarite TEXT)''')
     conn.commit()
     conn.close()
+
+def menu():
+    with ui.header().classes('items-center justify-between bg-indigo-9'):
+        with ui.row().classes('items-center'):
+            ui.label('Fantasy Sumo').classes('text-xl font-bold')
+        
+        with ui.row():
+            ui.button('Draft Board', on_click=lambda: ui.navigate.to('/')).props('flat color=white icon=groups')
+            ui.button('Results', on_click=lambda: ui.navigate.to('/results')).props('flat color=white icon=trending_up')    
 
 @app.on_startup
 def startup():
@@ -116,9 +125,14 @@ async def login_page(request: Request):
         name_input.on('keydown.enter', do_login)
         ui.button('Sign In', on_click=do_login).classes('w-full').props('unelevated color=primary')
 
-async def update_daily_results(day_number):
-    url = f"https://www.sumo-api.com/api/basho/202603/banzuke/Makuuchi"
-    
+async def update_all_available_days():
+    # Since it's March 19 in Dublin, it's already March 20 (Day 6) in Osaka.
+    # We loop through all potential days of the tournament.
+    for d in range(1, 16):
+        await update_daily_results(d)
+    ui.notify("Tournament history updated!", color='green')
+    ui.navigate.to('/results') # Refresh page to show new data
+
     try:
         response = await asyncio.get_event_loop().run_in_executor(
             None, lambda: requests.get(url, timeout=5)
@@ -191,33 +205,51 @@ def index():
 
 @ui.page('/results')
 def results_page():
-    # Header
+    menu()
+    
     with ui.row().classes('w-full items-center justify-between q-pa-md'):
-        ui.label('March 2026 Live Results').classes('text-h4')
-        ui.button('Update Today', on_click=lambda: update_daily_results(4)).props('icon=sync')
-
-    # Results Table
-    columns = [
-        {'name': 'rikishi', 'label': 'Rikishi', 'field': 'rikishi_name', 'sortable': True},
-        {'name': 'result', 'label': 'Result', 'field': 'result'},
-        {'name': 'opponent', 'label': 'Opponent', 'field': 'opponent_name'},
-        {'name': 'method', 'label': 'Kimarite', 'field': 'kimarite'},
-    ]
+        ui.label('March 2026 Basho History').classes('text-h4')
+        # Button to sync the latest data (Day 5/6)
+        ui.button('Sync Latest', on_click=lambda: update_all_available_days()).props('icon=sync')
 
     conn = sqlite3.connect('sumo.db')
     cursor = conn.cursor()
-    # Join with wrestlers table to see who OWNS the winner!
-    cursor.execute("""
-        SELECT r.rikishi_name, r.result, r.opponent_name, r.kimarite, w.owner
-        FROM daily_results r
-        LEFT JOIN wrestlers w ON r.rikishi_name = w.name
-        WHERE r.day = 4
-    """)
-    rows = [dict(zip(['rikishi_name', 'result', 'opponent_name', 'kimarite', 'owner'], row)) for row in cursor.fetchall()]
-    conn.close()
+    
+    # 1. Find the highest day we have data for
+    cursor.execute("SELECT MAX(day) FROM daily_results")
+    max_day = cursor.fetchone()[0] or 0
+    
+    if max_day == 0:
+        ui.label('No results found. Click Sync to fetch data!').classes('q-pa-lg text-h6 text-grey')
+        conn.close()
+        return
 
-    # Display the table
-    ui.table(columns=columns, rows=rows, row_key='rikishi_name').classes('w-full')
+    # 2. Loop from current day down to Day 1
+    for day_num in range(max_day, 0, -1):
+        with ui.expansion(f'Day {day_num} Results', icon='calendar_today').classes('w-full mb-2'):
+            
+            # Fetch results specifically for THIS day
+            cursor.execute("""
+                SELECT r.rikishi_name, r.result, w.owner, r.opponent_name, r.kimarite
+                FROM daily_results r
+                LEFT JOIN wrestlers w ON r.rikishi_name = w.name
+                WHERE r.day = ?
+                ORDER BY r.result DESC, r.rikishi_name ASC
+            """, (day_num,))
+            
+            day_rows = [dict(zip(['rikishi', 'res', 'owner', 'opp', 'kim'], row)) for row in cursor.fetchall()]
+            
+            # Define columns for this specific day's table
+            columns = [
+                {'name': 'rikishi', 'label': 'Rikishi', 'field': 'rikishi'},
+                {'name': 'owner', 'label': 'Owner', 'field': 'owner'},
+                {'name': 'res', 'label': 'Result', 'field': 'res'},
+                {'name': 'opp', 'label': 'Opponent', 'field': 'opp'},
+            ]
+            
+            ui.table(columns=columns, rows=day_rows).classes('w-full').props('flat bordered')
+
+    conn.close()
 
 
 async def seed_data():
